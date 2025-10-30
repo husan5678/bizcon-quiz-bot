@@ -31,6 +31,7 @@ from datetime import datetime, timedelta
 import aiosqlite
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -48,7 +49,8 @@ ADMIN_IDS = {int(x) for x in os.getenv("ADMINS", "").replace(" ", "").split(",")
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(BOT_TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 TZ = zoneinfo.ZoneInfo("Asia/Tashkent")
@@ -668,5 +670,6 @@ if __name__ == "__main__":
     if not BOT_TOKEN:
         raise SystemExit("BOT_TOKEN not set in .env")
     asyncio.run(main())
+
 
 
