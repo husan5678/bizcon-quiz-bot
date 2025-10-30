@@ -267,11 +267,48 @@ def chunks(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i:i+n]
 
+import aiosqlite
+
+DB_PATH = os.getenv("DB_PATH", "quiz.db")
+
 async def db():
     return await aiosqlite.connect(DB_PATH)
 
 async def init_db():
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
+        await con.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tg_id INTEGER UNIQUE,
+            name TEXT,
+            lang TEXT DEFAULT 'ru'
+        );
+        CREATE TABLE IF NOT EXISTS attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tg_id INTEGER,
+            date TEXT,
+            score INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS answers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tg_id INTEGER,
+            question TEXT,
+            answer TEXT,
+            correct INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+        CREATE TABLE IF NOT EXISTS groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER UNIQUE,
+            title TEXT,
+            weekly_enabled INTEGER DEFAULT 1
+        );
+        """)
+        await con.commit()
+
         await con.executescript(INIT_SQL)
         # seed brands
         for b in SAMPLE_BRANDS[:-1]:  # no MIX in table
@@ -670,6 +707,7 @@ if __name__ == "__main__":
     if not BOT_TOKEN:
         raise SystemExit("BOT_TOKEN not set in .env")
     asyncio.run(main())
+
 
 
 
