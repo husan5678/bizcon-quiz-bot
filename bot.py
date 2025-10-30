@@ -335,18 +335,18 @@ async def init_db():
             await con.commit()
 
 async def ensure_user(user_id: int):
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         await con.execute("INSERT OR IGNORE INTO users(tg_id) VALUES(?)", (user_id,))
         await con.commit()
 
 async def get_lang(user_id: int) -> str:
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute("SELECT lang FROM users WHERE tg_id=?", (user_id,))
         row = await cur.fetchone()
         return row[0] if row else "RU"
 
 async def set_lang(user_id: int, lang: str):
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         await con.execute("UPDATE users SET lang=? WHERE tg_id=?", (lang, user_id))
         await con.commit()
 
@@ -368,7 +368,7 @@ async def set_language(cq: CallbackQuery, state: FSMContext):
 async def cmd_test(m: Message, state: FSMContext):
     lang = await get_lang(m.from_user.id)
     # Build brand keyboard
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute("SELECT id,name FROM brands ORDER BY name")
         brands = await cur.fetchall()
     rows = []
@@ -382,7 +382,7 @@ async def cmd_test(m: Message, state: FSMContext):
 @dp.callback_query(QuizStates.choosing_brand, F.data.startswith("brand:"))
 async def choose_brand(cq: CallbackQuery, state: FSMContext):
     sel = cq.data.split(":", 1)[1]
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         if sel == "MIX":
             cur = await con.execute("SELECT id FROM questions ORDER BY RANDOM() LIMIT 10")
             qids = [r[0] for r in await cur.fetchall()]
@@ -397,7 +397,7 @@ async def choose_brand(cq: CallbackQuery, state: FSMContext):
         await cq.message.answer(TXT["no_questions"][lang])
         return
     # create attempt
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute("SELECT id FROM users WHERE tg_id=?", (cq.from_user.id,))
         (uid,) = await cur.fetchone()
         ac = await con.execute(
@@ -414,7 +414,7 @@ async def send_question(msg: Message, uid: int):
     sess = user_sessions.get(uid)
     if not sess:
         return
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         qid = sess.qids[sess.current]
         cur = await con.execute("SELECT id,text_ru,text_uz,explanation_ru,explanation_uz FROM questions WHERE id=?", (qid,))
         q = await cur.fetchone()
@@ -433,7 +433,7 @@ async def answer_q(cq: CallbackQuery, state: FSMContext):
     lang = await get_lang(uid)
     _, qid_s, cid_s = cq.data.split(":")
     qid, cid = int(qid_s), int(cid_s)
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute("SELECT is_correct FROM choices WHERE id=?", (cid,))
         (ok,) = await cur.fetchone()
         # fetch explanation
@@ -461,7 +461,7 @@ async def answer_q(cq: CallbackQuery, state: FSMContext):
         await send_question(cq.message, uid)
     else:
         # finish
-        async with await db() as con:
+        async with aiosqlite.connect(DB_PATH) as con:
             await con.execute("UPDATE attempts SET finished_at=?, score=? WHERE id=?",
                               (datetime.utcnow().isoformat(), sess.score, sess.attempt_id))
             # add points = score
@@ -481,7 +481,7 @@ async def weekly_leaderboard(m: Message):
     today = datetime.now(tz=TZ).date()
     start = today - timedelta(days=today.weekday())  # Monday
     start_dt = datetime.combine(start, datetime.min.time()).astimezone(TZ)
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute(
             """
             SELECT u.tg_id, COALESCE(SUM(a.score),0) AS pts
@@ -510,7 +510,7 @@ async def weekly_leaderboard(m: Message):
 @dp.message(Command("stats"))
 async def my_stats(m: Message):
     lang = await get_lang(m.from_user.id)
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute("SELECT COUNT(*), COALESCE(SUM(score),0) FROM attempts a JOIN users u ON a.user_id=u.id WHERE u.tg_id=?", (m.from_user.id,))
         (attempts, sum_score) = await cur.fetchone()
     await m.answer(f"📊 Attempts: {attempts}\n✨ Points: {sum_score}")
@@ -518,7 +518,7 @@ async def my_stats(m: Message):
 # --------------- Daily quiz opt-in ---------------
 @dp.message(Command("daily_on"))
 async def daily_on(m: Message):
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         await con.execute("UPDATE users SET daily_enabled=1 WHERE tg_id=?", (m.from_user.id,))
         await con.commit()
     lang = await get_lang(m.from_user.id)
@@ -526,14 +526,14 @@ async def daily_on(m: Message):
 
 @dp.message(Command("daily_off"))
 async def daily_off(m: Message):
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         await con.execute("UPDATE users SET daily_enabled=0 WHERE tg_id=?", (m.from_user.id,))
         await con.commit()
     lang = await get_lang(m.from_user.id)
     await m.answer(TXT["daily_off"][lang])
 
 async def send_daily_quiz():
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute("SELECT tg_id FROM users WHERE daily_enabled=1")
         users = [r[0] for r in await cur.fetchall()]
     for uid in users:
@@ -548,7 +548,7 @@ async def send_daily_quiz():
 async def bind_group(m: Message):
     """Run in a group: binds this chat to weekly auto-posting of leaderboard. Admins only in groups."""
     if m.chat.type in {"group", "supergroup"}:
-        async with await db() as con:
+        async with aiosqlite.connect(DB_PATH) as con:
             await con.execute("INSERT OR IGNORE INTO groups(chat_id,title,weekly_enabled) VALUES(?,?,1)", (m.chat.id, m.chat.title or "Group"))
             await con.commit()
         return await m.answer("✅ Группа привязана. Авто-рейтинги по понедельникам включены.")
@@ -558,7 +558,7 @@ async def bind_group(m: Message):
 @dp.message(Command("weekly_on"))
 async def weekly_on(m: Message):
     if m.chat.type in {"group", "supergroup"}:
-        async with await db() as con:
+        async with aiosqlite.connect(DB_PATH) as con:
             await con.execute("UPDATE groups SET weekly_enabled=1 WHERE chat_id=?", (m.chat.id,))
             await con.commit()
         return await m.answer("🔔 Еженедельная рассылка ВКЛ.")
@@ -567,7 +567,7 @@ async def weekly_on(m: Message):
 @dp.message(Command("weekly_off"))
 async def weekly_off(m: Message):
     if m.chat.type in {"group", "supergroup"}:
-        async with await db() as con:
+        async with aiosqlite.connect(DB_PATH) as con:
             await con.execute("UPDATE groups SET weekly_enabled=0 WHERE chat_id=?", (m.chat.id,))
             await con.commit()
         return await m.answer("🔕 Еженедельная рассылка ВЫКЛ.")
@@ -579,7 +579,7 @@ async def post_weekly_leaderboard():
     start = today - timedelta(days=today.weekday())
     start_dt = datetime.combine(start, datetime.min.time()).astimezone(TZ)
     # Build text once
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute(
             """
             SELECT u.tg_id, COALESCE(SUM(a.score),0) AS pts
@@ -627,7 +627,7 @@ async def add_brand(m: Message):
     name = m.text.split(" ", 1)[1] if " " in m.text else None
     if not name:
         return await m.answer("Usage: /addbrand BRAND")
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         await con.execute("INSERT OR IGNORE INTO brands(name) VALUES(?)", (name.strip(),))
         await con.commit()
     await m.answer(f"Brand added: {name}")
@@ -635,7 +635,7 @@ async def add_brand(m: Message):
 @dp.message(Command("listbrands"))
 @admin_only
 async def list_brands(m: Message):
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute("SELECT id,name FROM brands ORDER BY name")
         rows = await cur.fetchall()
     lines = [f"{bid}: {name}" for bid, name in rows]
@@ -655,7 +655,7 @@ async def add_q(m: Message):
         brand, qru, quz, answers, exru, exuz = [x.strip() for x in payload.split("|")]
     except Exception:
         return await m.answer("Format error. Send as:\n/addq BRAND|Q_RU|Q_UZ|A_RU*A_UZ*0;...|EXP_RU|EXP_UZ")
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute("SELECT id FROM brands WHERE name=?", (brand,))
         row = await cur.fetchone()
         if not row:
@@ -679,7 +679,7 @@ async def broadcast(m: Message):
     msg = m.text.split(" ", 1)[1] if " " in m.text else None
     if not msg:
         return await m.answer("Usage: /broadcast TEXT")
-    async with await db() as con:
+    async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute("SELECT tg_id FROM users")
         rows = await cur.fetchall()
     for (uid,) in rows:
@@ -707,6 +707,7 @@ if __name__ == "__main__":
     if not BOT_TOKEN:
         raise SystemExit("BOT_TOKEN not set in .env")
     asyncio.run(main())
+
 
 
 
