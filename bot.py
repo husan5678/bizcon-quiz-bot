@@ -567,8 +567,8 @@ async def post_weekly_leaderboard():
             except Exception:
                 name = str(tgid)
             lines.append(f"{i}. {name} — {pts} ✨")
-        text = "
-".join(lines)
+        text = "\n".join(lines)
+      
     for chat_id, title in groups:
         try:
             await bot.send_message(chat_id, text)
@@ -668,4 +668,5 @@ if __name__ == "__main__":
     if not BOT_TOKEN:
         raise SystemExit("BOT_TOKEN not set in .env")
     asyncio.run(main())
+
 
