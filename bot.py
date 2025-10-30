@@ -44,7 +44,7 @@ from apscheduler.triggers.cron import CronTrigger
 from dotenv import load_dotenv
 
 load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = "7601400677:AAFVzj2etbIwUvwy4E88F88Z1xzpIO9K3_Q"
 ADMIN_IDS = {int(x) for x in os.getenv("ADMINS", "").replace(" ", "").split(",") if x}
 
 logging.basicConfig(level=logging.INFO)
@@ -707,6 +707,7 @@ if __name__ == "__main__":
     if not BOT_TOKEN:
         raise SystemExit("BOT_TOKEN not set in .env")
     asyncio.run(main())
+
 
 
 
