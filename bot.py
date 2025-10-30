@@ -466,8 +466,7 @@ async def weekly_leaderboard(m: Message):
         except Exception:
             name = str(tgid)
         lines.append(f"{i}. {name} — {pts} ✨")
-    await m.answer("
-".join(lines))
+    await m.answer("\n".join(lines))
 
 @dp.message(Command("stats"))
 async def my_stats(m: Message):
@@ -669,3 +668,4 @@ if __name__ == "__main__":
     if not BOT_TOKEN:
         raise SystemExit("BOT_TOKEN not set in .env")
     asyncio.run(main())
+
